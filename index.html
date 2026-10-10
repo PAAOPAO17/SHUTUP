@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14181f">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="PC Remote">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<title>PC Remote</title>
+<style>
+:root{--bg:#14181f;--surface:#1d232d;--text:#e8ecf1;--muted:#7c8796;--accent:#ff5c6c;--ok:#5fd4a0}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--text);font:16px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2.5rem;
+  padding:env(safe-area-inset-top) 1.5rem env(safe-area-inset-bottom);user-select:none;-webkit-user-select:none;touch-action:manipulation}
+.status{display:flex;align-items:center;gap:.6rem;color:var(--muted);font-size:.95rem}
+.dot{width:.6rem;height:.6rem;border-radius:50%;background:var(--ok);box-shadow:0 0 0 0 var(--ok);animation:pulse 2.4s infinite}
+.offline .dot{background:var(--muted);animation:none}
+@keyframes pulse{70%{box-shadow:0 0 0 10px transparent}100%{box-shadow:0 0 0 0 transparent}}
+.power{position:relative;width:min(70vw,260px);aspect-ratio:1;border:0;padding:0;background:none;color:var(--text);cursor:pointer;outline:none}
+.power svg{width:100%;height:100%;transform:rotate(-90deg);overflow:visible}
+.track{fill:var(--surface);stroke:#2a323f;stroke-width:3}
+.ring{fill:none;stroke:var(--accent);stroke-width:5;stroke-linecap:round;stroke-dasharray:314;stroke-dashoffset:314}
+.icon{position:absolute;inset:0;display:grid;place-items:center;transition:transform .25s,color .25s}
+.icon svg{width:34%;height:34%;transform:none;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round}
+.power.holding .icon{transform:scale(.88);color:var(--accent)}
+.power:focus-visible{outline:2px solid var(--accent);outline-offset:8px;border-radius:50%}
+.power.done .ring{stroke:var(--ok)}
+.power.done .icon{color:var(--ok)}
+.msg{min-height:1.5em;text-align:center;color:var(--muted);transition:color .2s}
+.msg.err{color:var(--accent)}
+.lock{display:none;flex-direction:column;align-items:center;gap:1rem;width:100%;max-width:260px}
+.locked .lock{display:flex}.locked .power,.locked .status,.locked .row,.locked #msg{display:none}
+.lock input{width:100%;padding:.9rem 1rem;border-radius:.8rem;border:1px solid #2a323f;background:var(--surface);color:var(--text);font:inherit;text-align:center;letter-spacing:.3em;outline:none}
+.lock input:focus{border-color:var(--accent)}
+.lock button{width:100%;padding:.9rem;border:0;border-radius:.8rem;background:var(--text);color:var(--bg);font:inherit;font-weight:600;cursor:pointer}
+.link{background:none;border:0;color:var(--muted);font:inherit;font-size:.85rem;cursor:pointer;padding:.5rem}
+.lock .link{width:auto;background:none;color:var(--muted);font-weight:400}
+.row{display:flex;gap:.25rem 1rem;flex-wrap:wrap;justify-content:center;max-width:90vw}
+#viewer{position:fixed;inset:0;background:#000;display:flex;align-items:center;justify-content:center;z-index:10}
+#viewer[hidden]{display:none}
+#screen{max-width:100%;max-height:100%;object-fit:contain}
+.vbar{position:absolute;top:0;left:0;right:0;display:flex;justify-content:space-between;align-items:center;padding:calc(env(safe-area-inset-top) + .75rem) 1rem .75rem;color:#fff;font-size:.9rem;background:linear-gradient(#000b,transparent)}
+.vbar button{background:#ffffff22;border:0;color:#fff;font:inherit;padding:.45rem .9rem;border-radius:2rem;cursor:pointer}
+.vbar button.on{background:#fff;color:#000}
+.vbot{top:auto;bottom:0;justify-content:center;gap:.5rem;padding:.75rem 1rem calc(env(safe-area-inset-bottom) + .75rem);background:linear-gradient(transparent,#000b)}
+.msgbox{display:none;flex-direction:column;align-items:center;gap:1rem;width:100%;max-width:320px}
+.composing .msgbox{display:flex}
+.composing .power,.composing .status,.composing .row,.composing #msg{display:none}
+.msgbox textarea{width:100%;min-height:7rem;padding:.9rem 1rem;border-radius:.8rem;border:1px solid #2a323f;background:var(--surface);color:var(--text);font:inherit;resize:none;outline:none}
+.msgbox textarea:focus{border-color:var(--accent)}
+.msgbox .send{width:100%;padding:.9rem;border:0;border-radius:.8rem;background:var(--text);color:var(--bg);font:inherit;font-weight:600;cursor:pointer}
+.shake{animation:shake .35s}
+@keyframes shake{25%{transform:translateX(-8px)}75%{transform:translateX(8px)}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+  <div class="status" id="status"><span class="dot"></span><span id="statusText">Connected</span></div>
+
+  <button class="power" id="power" aria-label="Hold to shut down">
+    <svg viewBox="0 0 120 120"><circle class="track" cx="60" cy="60" r="54"/><circle class="ring" id="ring" cx="60" cy="60" r="50"/></svg>
+    <span class="icon"><svg viewBox="0 0 24 24"><path d="M12 3v8"/><path d="M6.3 6.8a8 8 0 1 0 11.4 0"/></svg></span>
+  </button>
+
+  <p class="msg" id="msg">Hold to shut down</p>
+
+  <form class="lock" id="lock" onsubmit="return false">
+    <p class="msg" style="margin:0">Enter your setup PIN once to register this phone's fingerprint.</p>
+    <input id="pin" type="password" inputmode="numeric" autocomplete="off" placeholder="Setup PIN" aria-label="Setup PIN">
+    <button id="unlock">Register fingerprint</button>
+    <p class="msg" id="lockMsg"></p>
+    <button type="button" class="link" id="cancelEnroll">Cancel</button>
+  </form>
+  <div class="msgbox" id="msgbox">
+    <p class="msg" style="margin:0">Shows as plain text on your PC until you remove it.</p>
+    <textarea id="msgText" maxlength="300" placeholder="Your message" aria-label="Message"></textarea>
+    <button class="send" id="msgSend">Send to PC</button>
+    <p class="msg" id="msgInfo"></p>
+    <button type="button" class="link" id="msgCancel">Cancel</button>
+  </div>
+  <div class="row"><button class="link" id="viewbtn">View screen</button><button class="link" id="msgbtn">Send message</button><button class="link" id="clearbtn" hidden>Clear message</button><button class="link" id="notifybtn">Notify me</button><button class="link" id="alertbtn">Activity alerts</button><button class="link" id="installbtn" hidden>Install app</button><button class="link" id="addfp">Add fingerprint</button></div>
+  <div id="viewer" hidden><img id="screen" alt="PC screen"><div class="vbar"><span id="vstat">Connecting…</span><button id="vclear" hidden>Clear message</button><button id="vclose">Close</button></div><div class="vbar vbot"><button data-q="low">Data saver</button><button data-q="med">Balanced</button><button data-q="high">Sharp</button></div></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const HOLD_MS = 1500, C = 314;
+let raf, start, busy = false;
+const enc = b => btoa(String.fromCharCode(...new Uint8Array(b))).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
+const dec = s => Uint8Array.from(atob(s.replace(/-/g,"+").replace(/_/g,"/")), c => c.charCodeAt(0)).buffer;
+const post = (p, body, h = {}) => fetch(p, {method: "POST", headers: {"Content-Type": "application/json", ...h}, body: body ? JSON.stringify(body) : undefined});
+const say = (t, err) => { $("msg").textContent = t; $("msg").className = "msg" + (err ? " err" : ""); };
+const secure = window.isSecureContext && window.PublicKeyCredential;
+if (!secure) say("Fingerprint needs the https:// address (see setup).", true);
+
+const common = c => ({id: c.id, rawId: enc(c.rawId), type: c.type, clientExtensionResults: c.getClientExtensionResults()});
+
+async function biometric() {
+  const r = await post("/api/auth/options");
+  if (r.status === 409) throw "enroll";
+  const o = await r.json();
+  o.challenge = dec(o.challenge);
+  (o.allowCredentials || []).forEach(c => c.id = dec(c.id));
+  const c = await navigator.credentials.get({publicKey: o});
+  const x = c.response;
+  const v = await post("/api/auth/verify", {...common(c), response: {clientDataJSON: enc(x.clientDataJSON),
+    authenticatorData: enc(x.authenticatorData), signature: enc(x.signature), userHandle: x.userHandle ? enc(x.userHandle) : undefined}});
+  if (!v.ok) throw new Error("Fingerprint not recognised");
+  return (await v.json()).token;
+}
+
+async function enroll() {
+  const pin = $("pin").value, lm = $("lockMsg");
+  lm.className = "msg"; lm.textContent = "";
+  try {
+    const r = await post("/api/reg/options", null, {"X-Pin": pin});
+    if (r.status === 401) throw new Error("Wrong PIN.");
+    const o = await r.json();
+    o.challenge = dec(o.challenge); o.user.id = dec(o.user.id);
+    (o.excludeCredentials || []).forEach(c => c.id = dec(c.id));
+    const c = await navigator.credentials.create({publicKey: o});
+    const x = c.response;
+    const v = await post("/api/reg/verify", {...common(c), response: {clientDataJSON: enc(x.clientDataJSON),
+      attestationObject: enc(x.attestationObject), transports: x.getTransports ? x.getTransports() : []}}, {"X-Pin": pin});
+    if (!v.ok) throw new Error("Couldn't save fingerprint.");
+    $("pin").value = ""; document.body.classList.remove("locked"); say("Fingerprint saved. Hold to shut down.");
+  } catch (e) {
+    lm.className = "msg err"; lm.textContent = e.name === "NotAllowedError" ? "Cancelled." : (e.message || "Failed.");
+    $("pin").classList.add("shake"); setTimeout(() => $("pin").classList.remove("shake"), 400);
+  }
+}
+$("unlock").onclick = () => secure ? enroll() : ($("lockMsg").textContent = "Open the https:// address first.");
+$("addfp").onclick = () => document.body.classList.add("locked");
+$("cancelEnroll").onclick = () => document.body.classList.remove("locked");
+
+// hold-to-confirm
+const btn = $("power"), ring = $("ring");
+const setProgress = p => ring.style.strokeDashoffset = C * (1 - p);
+function tick(t) {
+  const p = Math.min((t - start) / HOLD_MS, 1);
+  setProgress(p);
+  if (p >= 1) return fire();
+  raf = requestAnimationFrame(tick);
+}
+function begin(e) {
+  if (busy || !secure) return;
+  e.preventDefault();
+  btn.classList.add("holding"); say("Keep holding…");
+  start = performance.now(); raf = requestAnimationFrame(tick);
+}
+function cancel() {
+  if (busy) return;
+  cancelAnimationFrame(raf); btn.classList.remove("holding");
+  ring.style.transition = "stroke-dashoffset .25s"; setProgress(0);
+  setTimeout(() => ring.style.transition = "", 260);
+  if (secure) say("Hold to shut down");
+}
+btn.addEventListener("pointerdown", begin);
+["pointerup", "pointerleave", "pointercancel"].forEach(ev => btn.addEventListener(ev, cancel));
+btn.addEventListener("contextmenu", e => e.preventDefault());
+btn.addEventListener("keydown", e => { if ((e.key === " " || e.key === "Enter") && !e.repeat) begin(e); });
+btn.addEventListener("keyup", cancel);
+
+async function fire() {
+  busy = true; navigator.vibrate && navigator.vibrate(60);
+  say("Confirm with your fingerprint");
+  try {
+    const token = await biometric();
+    const r = await post("/api/shutdown", null, {"X-Token": token});
+    if (r.status === 503) throw new Error("PC helper isn't running, so nothing was shut down.");
+    if (!r.ok) throw new Error("Couldn't reach your PC.");
+    btn.classList.add("done"); say("Shutting down…"); watchOffline();
+  } catch (e) {
+    busy = false; cancel();
+    if (e === "enroll") { document.body.classList.add("locked"); return; }
+    say(e.name === "NotAllowedError" ? "Cancelled." : (e.message || "Something went wrong."), true);
+  }
+}
+
+function watchOffline() {
+  const t = setInterval(async () => {
+    try { await fetch("/api/ping", {cache: "no-store", signal: AbortSignal.timeout(2500)}); }
+    catch { clearInterval(t); say("Your PC is off."); }
+  }, 2000);
+}
+
+async function ping() {
+  try {
+    const j = await (await fetch("/api/ping", {cache: "no-store", signal: AbortSignal.timeout(3000)})).json();
+    const ok = j.watcher !== false;
+    if (typeof j.alerts === "boolean") { alertsOn = j.alerts; showAlerts(); }
+    $("status").classList.toggle("offline", !ok); $("statusText").textContent = ok ? "Connected" : "PC helper not running";
+  } catch { $("status").classList.add("offline"); $("statusText").textContent = "PC offline"; }
+}
+// live screen view
+let vtok = "", viewing = false, vtimer;
+async function openView() {
+  if (!secure) return say("Fingerprint needs the https:// address (see setup).", true);
+  say("Confirm with your fingerprint");
+  try {
+    const r = await post("/api/view/start", null, {"X-Token": await biometric()});
+    if (r.status === 503) throw new Error("PC helper isn't running, so the screen can't be shown.");
+    if (!r.ok) throw new Error("Couldn't start viewing.");
+    vtok = (await r.json()).token; viewing = true;
+    $("viewer").hidden = false; $("vstat").textContent = "Connecting…"; say("Hold to shut down"); startStream();
+  } catch (e) {
+    if (e === "enroll") return document.body.classList.add("locked");
+    say(e.name === "NotAllowedError" ? "Cancelled." : (e.message || "Something went wrong."), true);
+  }
+}
+function closeView(m) { viewing = false; clearTimeout(vtimer); $("screen").removeAttribute("src"); $("viewer").hidden = true; say(m || "Hold to shut down"); }
+function startStream() {
+  const img = $("screen"), end = "Viewing ended. Scan your fingerprint to watch again.";
+  img.onload = () => $("vstat").textContent = "● Live";
+  img.onerror = () => viewing && closeView(end);
+  img.src = "/api/stream?t=" + vtok + "&q=" + vq; marks();
+  clearTimeout(vtimer); vtimer = setTimeout(() => viewing && closeView(end), 600000);
+  let waited = 0;   // status from the real picture, plus a hint if nothing arrives
+  const chk = setInterval(() => {
+    if (!viewing) return clearInterval(chk);
+    if (img.naturalWidth > 0) { $("vstat").textContent = "● Live"; return clearInterval(chk); }
+    if (++waited === 16) $("vstat").textContent = "No picture from PC yet. Is the watcher running?";
+  }, 500);
+}
+// picture quality: remembered, and defaults to "Data saver" on mobile data
+let vq = "med";
+try { vq = localStorage.getItem("vq") || (navigator.connection && (navigator.connection.type === "cellular" || navigator.connection.saveData) ? "low" : "med"); } catch {}
+const marks = () => document.querySelectorAll("[data-q]").forEach(b => b.classList.toggle("on", b.dataset.q === vq));
+document.querySelectorAll("[data-q]").forEach(b => b.onclick = () => {
+  vq = b.dataset.q; try { localStorage.setItem("vq", vq); } catch {}
+  marks(); if (viewing) startStream();
+});
+// activity alerts: notify me when the PC is used again after 5 minutes idle
+let alertsOn = true;
+function showAlerts() { $("alertbtn").textContent = "Activity alerts: " + (alertsOn ? "On" : "Off"); }
+$("alertbtn").onclick = async () => {
+  if (!secure) return say("Fingerprint needs the https:// address (see setup).", true);
+  say("Confirm with your fingerprint");
+  try {
+    const r = await post("/api/alerts", {on: !alertsOn}, {"X-Token": await biometric()});
+    if (!r.ok) throw new Error("Couldn't change the setting.");
+    alertsOn = (await r.json()).on; showAlerts();
+    say(alertsOn ? "Alerts on. You'll be told when your PC is used after 5 minutes idle." : "Activity alerts off.");
+  } catch (e) {
+    if (e === "enroll") return document.body.classList.add("locked");
+    say(e.name === "NotAllowedError" ? "Cancelled." : (e.message || "Something went wrong."), true);
+  }
+};
+// remove the message instantly (this phone gets a key when it sends; falls back to a fingerprint scan)
+let clr = "";
+function showClr() { $("clearbtn").hidden = $("vclear").hidden = !clr; }
+function setClr(t) {
+  clr = t; showClr();
+  try { t ? localStorage.setItem("clr", JSON.stringify({t, exp: Date.now() + 29 * 60000})) : localStorage.removeItem("clr"); } catch {}
+}
+try { const c = JSON.parse(localStorage.getItem("clr") || "null"); if (c && c.exp > Date.now()) { clr = c.t; showClr(); } } catch {}
+async function clearMessage() {
+  const note = (t, err) => { say(t, err); if (viewing) $("vstat").textContent = t; };
+  note("Removing…");
+  try {
+    let r = clr ? await post("/api/message/clear", null, {"X-Clear": clr}) : {status: 401};
+    if (r.status === 401) r = await post("/api/message/clear", null, {"X-Token": await biometric()});
+    if (r.status === 503) throw new Error("PC helper isn't running.");
+    if (!r.ok) throw new Error("Couldn't remove the message.");
+    setClr(""); note("Message removed ✓");
+  } catch (e) {
+    if (e === "enroll") return document.body.classList.add("locked");
+    note(e.name === "NotAllowedError" ? "Cancelled." : (e.message || "Something went wrong."), true);
+  }
+}
+$("clearbtn").onclick = $("vclear").onclick = clearMessage;
+// send a message to show on the PC screen
+$("msgbtn").onclick = () => { $("msgInfo").textContent = ""; document.body.classList.add("composing"); $("msgText").focus(); };
+$("msgCancel").onclick = () => document.body.classList.remove("composing");
+$("msgSend").onclick = async () => {
+  const text = $("msgText").value.trim(), info = $("msgInfo");
+  if (!text) return;
+  if (!secure) { info.className = "msg err"; return info.textContent = "Fingerprint needs the https:// address."; }
+  info.className = "msg"; info.textContent = "Confirm with your fingerprint";
+  try {
+    const r = await post("/api/message", {text}, {"X-Token": await biometric()});
+    if (r.status === 503) throw new Error("PC helper isn't running.");
+    if (!r.ok) throw new Error("Couldn't send the message.");
+    setClr((await r.json()).clear);
+    $("msgText").value = ""; document.body.classList.remove("composing"); say("Message shown on your PC ✓");
+  } catch (e) {
+    if (e === "enroll") { document.body.classList.remove("composing"); return document.body.classList.add("locked"); }
+    info.className = "msg err"; info.textContent = e.name === "NotAllowedError" ? "Cancelled." : (e.message || "Something went wrong.");
+  }
+};
+$("viewbtn").onclick = openView;
+$("vclose").onclick = () => closeView();
+// installable app + "PC is on" notifications
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js");
+let installEvt;
+window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); installEvt = e; $("installbtn").hidden = false; });
+$("installbtn").onclick = async () => { installEvt.prompt(); await installEvt.userChoice; $("installbtn").hidden = true; };
+window.addEventListener("appinstalled", () => $("installbtn").hidden = true);
+
+async function enableNotify() {
+  if (!secure || !("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window))
+    return say("On iPhone, first add this to your Home Screen, then open it from there.", true);
+  if (Notification.permission === "default") {   // step 1: ask permission
+    const p = await Notification.requestPermission();
+    return p === "granted" ? say("Allowed. Tap Notify me again to finish.") : say("Notifications are blocked in your phone settings.", true);
+  }
+  if (Notification.permission !== "granted") return say("Notifications are blocked in your phone settings.", true);
+  say("Confirm with your fingerprint");   // step 2: fingerprint, then subscribe
+  try {
+    const token = await biometric();
+    const reg = await navigator.serviceWorker.ready;
+    const key = (await (await fetch("/api/push/key")).json()).key;
+    const sub = await reg.pushManager.subscribe({userVisibleOnly: true, applicationServerKey: new Uint8Array(dec(key))});
+    const r = await post("/api/push/subscribe", sub.toJSON(), {"X-Token": token});
+    if (!r.ok) throw new Error("Couldn't turn on notifications.");
+    say("Notifications on ✓");
+  } catch (e) {
+    if (e === "enroll") return document.body.classList.add("locked");
+    say(e.name === "NotAllowedError" ? "Cancelled." : (e.message || "Something went wrong."), true);
+  }
+}
+$("notifybtn").onclick = enableNotify;
+ping(); setInterval(ping, 5000);
+</script>
+</body>
+</html>
