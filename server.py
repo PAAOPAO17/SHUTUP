@@ -98,14 +98,29 @@ if not settings.get("pin"):   # first run: make a random setup PIN (shown on the
     settings["pin"] = os.environ.get("PIN") or "".join(secrets.choice("0123456789") for _ in range(6))
     save_settings()
 
-def _info():   # written every minute by the Windows helper: Tailscale name / state
+def _info():   # Tailscale name / state: written by the Windows helper (info.json) or the macOS helper (raw files)
     try: return json.load(open("/trigger/info.json"))
+    except Exception: pass
+    return _info_mac()
+
+def _info_mac():
+    try: st = json.load(open("/trigger/ts-status.json"))
     except Exception: return {}
+    me = st.get("Self") or {}
+    dns = (me.get("DNSName") or "").rstrip(".")
+    try: serve = open("/trigger/ts-serve.txt").read()
+    except OSError: serve = ""
+    try: pc = open("/trigger/pc.txt").read().strip()
+    except OSError: pc = ""
+    user = (st.get("User") or {}).get(str(me.get("UserID", ""))) or {}
+    phones = sum(1 for p in (st.get("Peer") or {}).values() if p.get("OS") in ("iOS", "android") and p.get("Online"))
+    return {"pc": pc, "state": st.get("BackendState", ""), "dns": dns, "serving": bool(dns) and ("https://" + dns) in serve,
+            "account": user.get("LoginName", ""), "phones_online": phones, "platform": "mac"}
 
 def setup_state():
     i = _info(); dns = i.get("dns", "")
     return {"pc": i.get("pc", ""), "link": ("https://" + dns) if dns else "", "tailscale": i.get("state", "unknown"),
-            "serving": bool(i.get("serving")), "account": i.get("account", ""), "phones_online": int(i.get("phones_online", 0)), "helper": watcher_alive(), "pin": settings["pin"],
+            "serving": bool(i.get("serving")), "account": i.get("account", ""), "platform": i.get("platform", "windows"), "phones_online": int(i.get("phones_online", 0)), "helper": watcher_alive(), "pin": settings["pin"],
             "phones": len(creds), "notify": len(subs), "alerts": settings["activity_alerts"]}
 
 def qr_svg(text):

@@ -153,14 +153,17 @@ async function load() {
   $("barfill").style.width = (n / 3 * 100) + "%";
   $("count").textContent = n === 3 ? "All done. Your PC Remote is ready to use." : n + " of 3 steps done";
 
+  const mac = s.platform === "mac";
+  const again = mac ? "open START HERE (Mac) again" : "double-click START HERE again";
+  const cap = t => t.charAt(0).toUpperCase() + t.slice(1);
   const up = s.tailscale === "Running";
   const tsWhy = s.tailscale === "NotInstalled" ? "Install Tailscale from tailscale.com/download, then sign in."
-              : up ? "" : "Open Tailscale (icon near the clock) and sign in.";
+              : up ? "" : "Open Tailscale (" + (mac ? "icon in the menu bar" : "icon near the clock") + ") and sign in.";
   $("checks").replaceChildren(
     row("ok", "Website is running"),
-    row(s.helper ? "ok" : "bad", "Helper is running", s.helper ? "" : "It starts when you sign in to Windows. Give it a minute, or double-click START HERE again."),
+    row(s.helper ? "ok" : "bad", "Helper is running", s.helper ? "" : "It starts when you " + (mac ? "log in to your Mac" : "sign in to Windows") + ". Give it a minute, or " + again + "."),
     row(up ? "ok" : "bad", "Tailscale connected", tsWhy),
-    row(s.serving ? "ok" : (up ? "bad" : "wait"), "Link is published", s.serving ? "" : "Double-click START HERE again. If it asks, enable HTTPS at login.tailscale.com/admin/dns.")
+    row(s.serving ? "ok" : (up ? "bad" : "wait"), "Link is published", s.serving ? "" : cap(again) + ". If it asks, enable HTTPS at login.tailscale.com/admin/dns.")
   );
 }
 $("qrTs").onerror = () => $("qrTs").hidden = true;
