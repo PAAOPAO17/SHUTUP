@@ -4,14 +4,11 @@ services:
     container_name: pc-remote
     restart: always
     ports:
-      - "127.0.0.1:8765:8080"      # only Tailscale (on this PC) can reach it
+      - "127.0.0.1:8765:8080"          # only this PC (and Tailscale) can reach it
     volumes:
-      - C:/pc-remote-trigger:/trigger
-      - creds:/data                # keeps your registered fingerprint
+      - C:/pc-remote-trigger:/trigger  # shared folder with the Windows helper
+      - creds:/data                    # keeps your PIN, fingerprints and notification settings
     environment:
-      PIN: "9193"             # only used once, to register your phone
-      RP_ID: "norba.tail405f37.ts.net"           # <-- your Tailscale hostname (no https://)
-      ORIGIN:  "https://norba.tail405f37.ts.net"   # <-- same hostname with https://
       SHUTDOWN_CMD: "touch /trigger/shutdown"
 volumes:
   creds:

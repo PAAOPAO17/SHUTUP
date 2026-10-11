@@ -101,6 +101,26 @@ function Show-Message($text) {
 }
 $form = $null; $formEnd = [datetime]::MinValue
 
+# Tells the setup page which Tailscale link this PC has (written every minute)
+$lastInfo = [datetime]::MinValue
+function Update-Info {
+    $tsx = "$env:ProgramFiles\Tailscale\tailscale.exe"
+    $o = @{ pc = $env:COMPUTERNAME; state = "NotInstalled"; dns = ""; serving = $false }
+    if (Test-Path $tsx) {
+        try {
+            $st = (& $tsx status --json | Out-String | ConvertFrom-Json)
+            $o.state = [string]$st.BackendState
+            $o.dns = ([string]$st.Self.DNSName).TrimEnd(".")
+            $sv = (& $tsx serve status 2>&1 | Out-String)
+            $o.serving = ($o.dns -ne "" -and $sv -match [regex]::Escape("https://" + $o.dns))
+        } catch { $o.state = "Error" }
+    }
+    try {
+        [System.IO.File]::WriteAllText("$dir\info.tmp", ($o | ConvertTo-Json -Compress))
+        Move-Item "$dir\info.tmp" "$dir\info.json" -Force
+    } catch { }
+}
+
 try {
 while ($true) {
     if (((Get-Date) - $lastAlive).TotalSeconds -ge 2) {   # "I'm running" signal for the app
@@ -194,6 +214,7 @@ while ($true) {
         if ($bmp) { Stop-Capture }
         $curProf = ""
         Remove-Item $img -Force -ErrorAction SilentlyContinue
+        if (((Get-Date) - $lastInfo).TotalSeconds -ge 60) { $lastInfo = Get-Date; Update-Info }
         Start-Sleep -Milliseconds $(if ($form) { 50 } else { 400 })
     }
 }

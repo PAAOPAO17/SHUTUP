@@ -13,9 +13,11 @@ from webauthn.helpers.structs import (AuthenticatorSelectionCriteria, Authentica
 PIN = os.environ.get("PIN", "")
 CMD = os.environ.get("SHUTDOWN_CMD", "touch /trigger/shutdown")
 DELAY = float(os.environ.get("DELAY_SECONDS", "2"))
-RP_ID, ORIGIN = os.environ["RP_ID"], os.environ["ORIGIN"]
+# RP_ID / ORIGIN are optional now: by default they are worked out from the address the phone used
+RP_ID, ORIGIN = os.environ.get("RP_ID", ""), os.environ.get("ORIGIN", "")
 DB = "/data/creds.json"
 HTML = open(os.path.join(os.path.dirname(__file__), "index.html"), "rb").read()
+SETUP_HTML = open(os.path.join(os.path.dirname(__file__), "setup.html"), "rb").read()
 UV = UserVerificationRequirement.REQUIRED
 
 try: creds = json.load(open(DB))
@@ -85,6 +87,24 @@ try: settings = json.load(open(SETTINGS_DB))
 except Exception: settings = {}
 settings.setdefault("activity_alerts", True)
 def save_settings(): json.dump(settings, open(SETTINGS_DB, "w"))
+if not settings.get("pin"):   # first run: make a random setup PIN (shown on the setup page, changeable there)
+    settings["pin"] = os.environ.get("PIN") or "".join(secrets.choice("0123456789") for _ in range(6))
+    save_settings()
+
+def _info():   # written every minute by the Windows helper: Tailscale name / state
+    try: return json.load(open("/trigger/info.json"))
+    except Exception: return {}
+
+def setup_state():
+    i = _info(); dns = i.get("dns", "")
+    return {"pc": i.get("pc", ""), "link": ("https://" + dns) if dns else "", "tailscale": i.get("state", "unknown"),
+            "serving": bool(i.get("serving")), "helper": watcher_alive(), "pin": settings["pin"],
+            "phones": len(creds), "notify": len(subs), "alerts": settings["activity_alerts"]}
+
+def qr_svg(text):
+    import io, qrcode, qrcode.image.svg
+    img = qrcode.make(text, image_factory=qrcode.image.svg.SvgPathImage, box_size=10, border=2)
+    buf = io.BytesIO(); img.save(buf); return buf.getvalue()
 
 def _human(sec):
     m = max(int(sec) // 60, 1)
@@ -115,13 +135,40 @@ class H(BaseHTTPRequestHandler):
 
     def body(self): return self.rfile.read(int(self.headers.get("Content-Length", 0))).decode()
 
+    def local(self):   # True only for a browser on this PC itself (not via Tailscale)
+        h = (self.headers.get("Host") or "").split(":")[0]
+        proxied = any(self.headers.get(k) for k in ("Tailscale-User-Login", "X-Forwarded-For", "X-Forwarded-Host"))
+        return h in ("localhost", "127.0.0.1") and not proxied
+
+    def rp(self):   # WebAuthn relying-party id + origin, taken from the address the browser used
+        if RP_ID and ORIGIN: return RP_ID, ORIGIN
+        host = (self.headers.get("X-Forwarded-Host") or self.headers.get("Host") or "").split(",")[0].strip()
+        name = host.rsplit(":", 1)[0] if host.count(":") == 1 else host
+        dns = _info().get("dns", "")
+        if name in ("localhost", "127.0.0.1") and dns and any(self.headers.get(k) for k in ("Tailscale-User-Login", "X-Forwarded-For")):
+            name = host = dns   # proxied by Tailscale but Host was rewritten: use the real name
+        scheme = "http" if name in ("localhost", "127.0.0.1") else "https"
+        return name, f"{scheme}://{host}"
+
     def pin_ok(self):
-        ok = bool(PIN) and hmac.compare_digest(self.headers.get("X-Pin", ""), PIN)
+        pin = settings.get("pin", ""); ok = bool(pin) and hmac.compare_digest(self.headers.get("X-Pin", ""), pin)
         if not ok: time.sleep(1)
         return ok
 
     def do_GET(self):
         if self.path == "/": self.out(200, HTML, "text/html; charset=utf-8")
+        elif self.path == "/setup":
+            if self.local(): self.out(200, SETUP_HTML, "text/html; charset=utf-8")
+            else: self.out(403, b"Open this page on your PC itself: http://localhost:8765/setup", "text/plain")
+        elif self.path == "/api/setup":
+            if not self.local(): return self.out(403)
+            self.out(200, json.dumps(setup_state()).encode())
+        elif self.path.startswith("/api/qr"):
+            if not self.local(): return self.out(403)
+            link = setup_state()["link"]
+            if not link: return self.out(404)
+            try: self.out(200, qr_svg(link), "image/svg+xml")
+            except Exception as ex: print("qr error:", ex, flush=True); self.out(501)
         elif self.path in STATIC: self.out(200, *STATIC[self.path])
         elif self.path == "/api/push/key": self.out(200, json.dumps({"key": VAPID_PUB}).encode())
         elif self.path == "/api/ping": self.out(200, json.dumps({"enrolled": bool(creds), "watcher": watcher_alive(), "alerts": settings["activity_alerts"]}).encode())
@@ -158,7 +205,7 @@ class H(BaseHTTPRequestHandler):
         try:
             if p == "/api/reg/options":
                 if not self.pin_ok(): return self.out(401)
-                o = generate_registration_options(rp_id=RP_ID, rp_name="PC Remote", user_id=b"owner",
+                o = generate_registration_options(rp_id=self.rp()[0], rp_name="PC Remote", user_id=b"owner",
                     user_name="owner", exclude_credentials=desc(),
                     authenticator_selection=AuthenticatorSelectionCriteria(
                         authenticator_attachment=AuthenticatorAttachment.PLATFORM, user_verification=UV))
@@ -167,19 +214,19 @@ class H(BaseHTTPRequestHandler):
             elif p == "/api/reg/verify":
                 if not self.pin_ok(): return self.out(401)
                 v = verify_registration_response(credential=self.body(), expected_challenge=chal.pop("reg"),
-                    expected_rp_id=RP_ID, expected_origin=ORIGIN, require_user_verification=True)
+                    expected_rp_id=self.rp()[0], expected_origin=self.rp()[1], require_user_verification=True)
                 creds.append({"id": e(v.credential_id), "pk": e(v.credential_public_key), "count": v.sign_count})
                 save(); self.out()
             elif p == "/api/auth/options":
                 if not creds: return self.out(409)
-                o = generate_authentication_options(rp_id=RP_ID, allow_credentials=desc(), user_verification=UV)
+                o = generate_authentication_options(rp_id=self.rp()[0], allow_credentials=desc(), user_verification=UV)
                 chal["auth"] = o.challenge
                 self.out(200, options_to_json(o).encode())
             elif p == "/api/auth/verify":
                 raw = self.body(); cid = json.loads(raw)["id"]
                 c = next(c for c in creds if c["id"] == cid)
                 v = verify_authentication_response(credential=raw, expected_challenge=chal.pop("auth"),
-                    expected_rp_id=RP_ID, expected_origin=ORIGIN, credential_public_key=d(c["pk"]),
+                    expected_rp_id=self.rp()[0], expected_origin=self.rp()[1], credential_public_key=d(c["pk"]),
                     credential_current_sign_count=c["count"], require_user_verification=True)
                 c["count"] = v.new_sign_count; save()
                 t = secrets.token_urlsafe(24); tokens[t] = time.time() + 60
@@ -209,6 +256,14 @@ class H(BaseHTTPRequestHandler):
                 except OSError: pass
                 open("/trigger/message.clear", "w").close()
                 self.out()
+            elif p == "/api/setup/pin":
+                if not self.local(): return self.out(403)
+                pin = str(json.loads(self.body()).get("pin", "")).strip()
+                if not (pin.isdigit() and 4 <= len(pin) <= 12): return self.out(400)
+                settings["pin"] = pin; save_settings(); self.out()
+            elif p == "/api/setup/reset":   # forget all registered phones
+                if not self.local(): return self.out(403)
+                creds.clear(); save(); self.out()
             elif p == "/api/alerts":
                 if tokens.pop(self.headers.get("X-Token", ""), 0) < time.time(): return self.out(401)
                 settings["activity_alerts"] = bool(json.loads(self.body()).get("on")); save_settings()

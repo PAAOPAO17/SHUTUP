@@ -71,7 +71,7 @@ body{background:var(--bg);color:var(--text);font:16px/1.4 system-ui,-apple-syste
   <p class="msg" id="msg">Hold to shut down</p>
 
   <form class="lock" id="lock" onsubmit="return false">
-    <p class="msg" style="margin:0">Enter your setup PIN once to register this phone's fingerprint.</p>
+    <p class="msg" style="margin:0">Enter the setup PIN shown on your PC (open http://localhost:8765/setup there) to register this phone's fingerprint.</p>
     <input id="pin" type="password" inputmode="numeric" autocomplete="off" placeholder="Setup PIN" aria-label="Setup PIN">
     <button id="unlock">Register fingerprint</button>
     <p class="msg" id="lockMsg"></p>
