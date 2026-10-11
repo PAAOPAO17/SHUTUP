@@ -8,90 +8,117 @@
 :root{--bg:#14181f;--surface:#1d232d;--line:#2a323f;--text:#e8ecf1;--muted:#7c8796;--accent:#ff5c6c;--ok:#5fd4a0;--warn:#f0b35a}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--text);font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;padding:2rem 1rem 4rem}
-main{max-width:560px;margin:0 auto;display:flex;flex-direction:column;gap:1.1rem}
-h1{font-size:1.5rem;margin:0}
-.sub{color:var(--muted);margin:.2rem 0 0}
-.card{background:var(--surface);border:1px solid var(--line);border-radius:1rem;padding:1.2rem}
-.card h2{font-size:.75rem;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);margin:0 0 .9rem;font-weight:600}
+main{max-width:600px;margin:0 auto;display:flex;flex-direction:column;gap:1rem}
+h1{font-size:1.6rem;margin:0}
+.sub{color:var(--muted);margin:.25rem 0 0}
+.bar{height:.45rem;background:var(--surface);border-radius:1rem;overflow:hidden;margin-top:1rem}
+.bar i{display:block;height:100%;width:0;background:var(--ok);transition:width .5s}
+.count{color:var(--muted);font-size:.9rem;margin:.4rem 0 0}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:1rem;padding:1.2rem 1.2rem 1.3rem;transition:opacity .3s}
+.card.done{opacity:.55}
+.card.now{border-color:var(--accent)}
+.head{display:flex;gap:.8rem;align-items:center}
+.num{width:2rem;height:2rem;border-radius:50%;display:grid;place-items:center;font-weight:700;background:var(--bg);border:1px solid var(--line);flex:none}
+.done .num{background:var(--ok);border-color:var(--ok);color:var(--bg)}
+.now .num{border-color:var(--accent);color:var(--accent)}
+.head h2{font-size:1.1rem;margin:0;flex:1}
+.chip{font-size:.75rem;color:var(--muted)}
+.now .chip{color:var(--accent)}.done .chip{color:var(--ok)}
+.body{margin-top:.9rem}
+.card.done .body{display:none}
+p{margin:.4rem 0}
+.hint{color:var(--muted);font-size:.9rem}
 .row{display:flex;gap:.6rem;align-items:center}
 .grow{flex:1;min-width:0}
 code,.mono{font-family:ui-monospace,"Cascadia Mono",Consolas,monospace}
-#link{font-size:1.05rem;word-break:break-all}
+#link{font-size:1.1rem;word-break:break-all}
 button{background:var(--text);color:var(--bg);border:0;border-radius:.7rem;padding:.6rem 1rem;font:inherit;font-weight:600;cursor:pointer}
 button.ghost{background:none;color:var(--muted);border:1px solid var(--line);font-weight:500}
 button.ghost:hover{color:var(--text)}
 button.danger{color:var(--accent)}
 input{background:var(--bg);border:1px solid var(--line);color:var(--text);border-radius:.7rem;padding:.6rem .8rem;font:inherit;width:9rem;outline:none}
 input:focus{border-color:var(--accent)}
-#qrbox{display:flex;justify-content:center;margin-top:1rem}
-#qr{width:190px;height:190px;background:#fff;padding:10px;border-radius:.8rem}
-.hint{color:var(--muted);font-size:.9rem;margin:.6rem 0 0}
-.pin{font-size:1.8rem;letter-spacing:.25em}
-ul.checks{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:.7rem}
+.qrs{display:flex;gap:1rem;align-items:center;margin-top:.8rem}
+.qr{width:150px;height:150px;background:#fff;padding:8px;border-radius:.7rem;flex:none}
+.pin{font-size:2rem;letter-spacing:.25em}
+ul.checks{list-style:none;margin:.2rem 0 0;padding:0;display:flex;flex-direction:column;gap:.6rem}
 ul.checks li{display:flex;gap:.7rem;align-items:flex-start}
 .dot{width:.7rem;height:.7rem;border-radius:50%;margin-top:.5rem;flex:none;background:var(--muted)}
 .ok .dot{background:var(--ok)}.bad .dot{background:var(--accent)}.wait .dot{background:var(--warn)}
 .why{display:block;color:var(--muted);font-size:.88rem}
-ol{margin:0;padding-left:1.2rem;display:flex;flex-direction:column;gap:.4rem}
-.msg{min-height:1.4em;font-size:.9rem;color:var(--ok);margin:.5rem 0 0}
+.msg{min-height:1.4em;font-size:.9rem;color:var(--ok);margin:.4rem 0 0}
 .msg.err{color:var(--accent)}
+details summary{cursor:pointer;color:var(--muted)}
+details[open] summary{margin-bottom:.6rem}
+@media(max-width:480px){.qrs{flex-direction:column;align-items:flex-start}}
 </style>
 </head>
 <body>
 <main>
   <div>
     <h1>PC Remote setup</h1>
-    <p class="sub">Everything you need to connect your phone. This page only opens on this PC.</p>
+    <p class="sub">Three quick steps on your phone. This page only opens on this PC and updates by itself.</p>
+    <div class="bar"><i id="barfill"></i></div>
+    <p class="count" id="count"></p>
   </div>
 
-  <section class="card">
-    <h2>Your phone link</h2>
-    <div class="row">
-      <code id="link" class="grow">Waiting for Tailscale…</code>
-      <button id="copy">Copy</button>
+  <section class="card" id="s1">
+    <div class="head"><span class="num">1</span><h2>Put Tailscale on your phone</h2><span class="chip" id="c1"></span></div>
+    <div class="body">
+      <p>Install the free <b>Tailscale</b> app and sign in with <b id="acct">the same account you used on this PC</b>. Leave it turned on.</p>
+      <div class="qrs">
+        <img class="qr" id="qrTs" alt="QR code for the Tailscale download page">
+        <p class="hint">Scan this with your phone camera to get the app, or search "Tailscale" in the App Store / Google Play.</p>
+      </div>
     </div>
-    <div id="qrbox"><img id="qr" alt="QR code for your link" hidden></div>
-    <p class="hint">Turn on the Tailscale app on your phone (same account as this PC), then scan this code with your phone camera or type the link.</p>
   </section>
 
-  <section class="card">
-    <h2>Setup PIN</h2>
-    <div class="row">
-      <span id="pin" class="pin mono grow">••••••</span>
-      <button class="ghost" id="show">Show</button>
+  <section class="card" id="s2">
+    <div class="head"><span class="num">2</span><h2>Open your link and register your fingerprint</h2><span class="chip" id="c2"></span></div>
+    <div class="body">
+      <p>On your phone (Tailscale on), scan this code or type the link:</p>
+      <div class="qrs">
+        <img class="qr" id="qrLink" alt="QR code for your link" hidden>
+        <div class="grow">
+          <div class="row"><code id="link" class="grow">Waiting for Tailscale…</code><button id="copy">Copy</button></div>
+          <p class="hint" style="margin-top:.8rem">When it asks, type this <b>setup PIN</b> once, then use your fingerprint:</p>
+          <div class="row"><span id="pin" class="pin mono grow">••••••</span><button class="ghost" id="show">Show</button></div>
+        </div>
+      </div>
+      <details style="margin-top:1rem"><summary>Change the PIN</summary>
+        <div class="row">
+          <input id="newpin" inputmode="numeric" maxlength="12" placeholder="New PIN" aria-label="New PIN">
+          <button class="ghost" id="savepin">Change PIN</button>
+        </div>
+        <p class="msg" id="pinmsg"></p>
+      </details>
     </div>
-    <p class="hint">You type this once on your phone to register your fingerprint. After that it isn't used.</p>
-    <div class="row" style="margin-top:.9rem">
-      <input id="newpin" inputmode="numeric" maxlength="12" placeholder="New PIN" aria-label="New PIN">
-      <button class="ghost" id="savepin">Change PIN</button>
+  </section>
+
+  <section class="card" id="s3">
+    <div class="head"><span class="num">3</span><h2>Install the app and turn on notifications</h2><span class="chip" id="c3"></span></div>
+    <div class="body">
+      <p>In the page on your phone, tap <b>Install app</b> (on iPhone: Share, then <b>Add to Home Screen</b>, and open it from there).</p>
+      <p>Then tap <b>Notify me</b> and allow notifications, so you hear when your PC turns on.</p>
     </div>
-    <p class="msg" id="pinmsg"></p>
   </section>
 
   <section class="card">
-    <h2>Status</h2>
-    <ul class="checks" id="checks"></ul>
+    <div class="head"><h2>This PC</h2></div>
+    <div class="body"><ul class="checks" id="checks"></ul></div>
   </section>
 
   <section class="card">
-    <h2>On your phone</h2>
-    <ol>
-      <li>Install <b>Tailscale</b> and sign in with the same account as this PC. Leave it on.</li>
-      <li>Open your link (above). Hold the power button, enter the setup PIN, and register your fingerprint.</li>
-      <li>Tap <b>Install app</b> (or Share → Add to Home Screen on iPhone), then <b>Notify me</b>.</li>
-    </ol>
-  </section>
-
-  <section class="card">
-    <h2>Lost your phone?</h2>
-    <button class="ghost danger" id="reset">Remove all registered phones</button>
-    <p class="msg" id="resetmsg"></p>
+    <details><summary>Lost or replaced your phone?</summary>
+      <button class="ghost danger" id="reset">Remove all registered phones</button>
+      <p class="msg" id="resetmsg"></p>
+    </details>
   </section>
 </main>
 
 <script>
 const $ = id => document.getElementById(id);
-let pin = "", shown = false, lastLink = "";
+let pin = "", shown = false, lastLink = "", tsqr = false;
 const post = (p, body) => fetch(p, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body || {})});
 
 function row(state, title, why) {
@@ -101,32 +128,44 @@ function row(state, title, why) {
   if (why) { const w = document.createElement("span"); w.className = "why"; w.textContent = why; t.appendChild(w); }
   li.append(d, t); return li;
 }
-
 function drawPin() { $("pin").textContent = shown ? pin : "•".repeat(pin.length || 6); $("show").textContent = shown ? "Hide" : "Show"; }
+function mark(i, done, current) {
+  const c = $("s" + i); c.classList.toggle("done", done); c.classList.toggle("now", !done && current);
+  $("c" + i).textContent = done ? "Done ✓" : (current ? "Do this now" : "Next");
+}
 
 async function load() {
   let s;
   try { s = await (await fetch("/api/setup", {cache: "no-store"})).json(); } catch { return; }
+
+  if (!tsqr) { tsqr = true; $("qrTs").src = "/api/qr?for=tailscale"; }
+  $("acct").textContent = s.account ? s.account : "the same account you used on this PC";
   if (s.link) {
     $("link").textContent = s.link;
-    if (s.link !== lastLink) { lastLink = s.link; $("qr").src = "/api/qr?" + Date.now(); }
-  } else { $("link").textContent = "Waiting for Tailscale…"; lastLink = ""; $("qr").hidden = true; }
+    if (s.link !== lastLink) { lastLink = s.link; $("qrLink").src = "/api/qr?" + Date.now(); }
+  } else { $("link").textContent = "Waiting for Tailscale on this PC…"; lastLink = ""; $("qrLink").hidden = true; }
   pin = s.pin; drawPin();
 
-  const ts = s.tailscale, up = ts === "Running";
-  const tsWhy = ts === "NotInstalled" ? "Install Tailscale from tailscale.com/download, then sign in."
+  const d1 = s.phones_online > 0 || s.phones > 0, d2 = s.phones > 0, d3 = s.notify > 0;
+  const cur = !d1 ? 1 : !d2 ? 2 : !d3 ? 3 : 0;
+  mark(1, d1, cur === 1); mark(2, d2, cur === 2); mark(3, d3, cur === 3);
+  const n = [d1, d2, d3].filter(Boolean).length;
+  $("barfill").style.width = (n / 3 * 100) + "%";
+  $("count").textContent = n === 3 ? "All done. Your PC Remote is ready to use." : n + " of 3 steps done";
+
+  const up = s.tailscale === "Running";
+  const tsWhy = s.tailscale === "NotInstalled" ? "Install Tailscale from tailscale.com/download, then sign in."
               : up ? "" : "Open Tailscale (icon near the clock) and sign in.";
-  const list = $("checks"); list.replaceChildren(
+  $("checks").replaceChildren(
     row("ok", "Website is running"),
-    row(s.helper ? "ok" : "bad", "Helper is running", s.helper ? "" : "It starts when you sign in to Windows. Give it a minute, or run Setup again."),
+    row(s.helper ? "ok" : "bad", "Helper is running", s.helper ? "" : "It starts when you sign in to Windows. Give it a minute, or double-click START HERE again."),
     row(up ? "ok" : "bad", "Tailscale connected", tsWhy),
-    row(s.serving ? "ok" : (up ? "bad" : "wait"), "HTTPS link published", s.serving ? "" : "Run Setup again, and make sure HTTPS is enabled at login.tailscale.com/admin/dns."),
-    row(s.phones ? "ok" : "wait", "Phone registered", s.phones ? s.phones + " phone(s) registered" : "Open the link on your phone and register your fingerprint."),
-    row(s.notify ? "ok" : "wait", "Notifications on", s.notify ? "" : "Tap Notify me in the phone app.")
+    row(s.serving ? "ok" : (up ? "bad" : "wait"), "Link is published", s.serving ? "" : "Double-click START HERE again. If it asks, enable HTTPS at login.tailscale.com/admin/dns.")
   );
 }
-$("qr").onload = () => $("qr").hidden = false;
-$("qr").onerror = () => $("qr").hidden = true;
+$("qrTs").onerror = () => $("qrTs").hidden = true;
+$("qrLink").onload = () => $("qrLink").hidden = false;
+$("qrLink").onerror = () => $("qrLink").hidden = true;
 
 $("copy").onclick = async () => {
   if (!lastLink) return;

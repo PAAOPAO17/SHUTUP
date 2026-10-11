@@ -102,16 +102,18 @@ function Show-Message($text) {
 }
 $form = $null; $formEnd = [datetime]::MinValue
 
-# Tells the setup page which Tailscale link this PC has (written every minute)
+# Tells the setup page which Tailscale link this PC has (refreshed every 20 seconds)
 $lastInfo = [datetime]::MinValue
 function Update-Info {
     $tsx = "$env:ProgramFiles\Tailscale\tailscale.exe"
-    $o = @{ pc = $env:COMPUTERNAME; state = "NotInstalled"; dns = ""; serving = $false }
+    $o = @{ pc = $env:COMPUTERNAME; state = "NotInstalled"; dns = ""; serving = $false; account = ""; phones_online = 0 }
     if (Test-Path $tsx) {
         try {
             $st = (& $tsx status --json | Out-String | ConvertFrom-Json)
             $o.state = [string]$st.BackendState
             $o.dns = ([string]$st.Self.DNSName).TrimEnd(".")
+            try { $uid = [string]$st.Self.UserID; $o.account = [string]$st.User.$uid.LoginName } catch { }
+            try { $o.phones_online = @($st.Peer.PSObject.Properties.Value | Where-Object { ($_.OS -eq "iOS" -or $_.OS -eq "android") -and $_.Online }).Count } catch { }
             $sv = (& $tsx serve status 2>&1 | Out-String)
             $o.serving = ($o.dns -ne "" -and $sv -match [regex]::Escape("https://" + $o.dns))
         } catch { $o.state = "Error" }
@@ -226,7 +228,7 @@ while ($true) {
         if ($bmp) { Stop-Capture }
         $curProf = ""
         Remove-Item $img -Force -ErrorAction SilentlyContinue
-        if (((Get-Date) - $lastInfo).TotalSeconds -ge 60) { $lastInfo = Get-Date; Update-Info }
+        if (((Get-Date) - $lastInfo).TotalSeconds -ge 20) { $lastInfo = Get-Date; Update-Info }
         Start-Sleep -Milliseconds $(if ($form) { 50 } else { 400 })
     }
 }

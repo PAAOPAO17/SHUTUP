@@ -105,7 +105,7 @@ def _info():   # written every minute by the Windows helper: Tailscale name / st
 def setup_state():
     i = _info(); dns = i.get("dns", "")
     return {"pc": i.get("pc", ""), "link": ("https://" + dns) if dns else "", "tailscale": i.get("state", "unknown"),
-            "serving": bool(i.get("serving")), "helper": watcher_alive(), "pin": settings["pin"],
+            "serving": bool(i.get("serving")), "account": i.get("account", ""), "phones_online": int(i.get("phones_online", 0)), "helper": watcher_alive(), "pin": settings["pin"],
             "phones": len(creds), "notify": len(subs), "alerts": settings["activity_alerts"]}
 
 def qr_svg(text):
@@ -172,7 +172,8 @@ class H(BaseHTTPRequestHandler):
             self.out(200, json.dumps(setup_state()).encode())
         elif self.path.startswith("/api/qr"):
             if not self.local(): return self.out(403)
-            link = setup_state()["link"]
+            which = parse_qs(urlsplit(self.path).query).get("for", ["link"])[0]
+            link = "https://tailscale.com/download" if which == "tailscale" else setup_state()["link"]
             if not link: return self.out(404)
             try: self.out(200, qr_svg(link), "image/svg+xml")
             except Exception as ex: print("qr error:", ex, flush=True); self.out(501)
