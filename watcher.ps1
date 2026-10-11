@@ -21,7 +21,7 @@ public class Native {
 
 $dir = "C:\pc-remote-trigger"
 $f = "$dir\shutdown"; $hb = "$dir\view"; $img = "$dir\screen.jpg"; $tmp = "$dir\screen.tmp"; $logf = "$dir\watcher.log"; $msgf = "$dir\message.txt"; $clrf = "$dir\message.clear"
-Remove-Item $f, $hb, $img, $tmp, "$dir\message.txt", "$dir\message.tmp", "$dir\message.clear", "$dir\activity.txt", "$dir\activity.tmp", "$dir\action.txt", "$dir\action.tmp" -Force -ErrorAction SilentlyContinue
+Remove-Item $f, $hb, $img, $tmp, "$dir\message.txt", "$dir\message.tmp", "$dir\message.clear", "$dir\activity.txt", "$dir\activity.tmp", "$dir\action.txt", "$dir\action.tmp", "$dir\message.on" -Force -ErrorAction SilentlyContinue
 Set-Content $logf ""
 function Log($m) { Add-Content $logf ("{0} {1}" -f (Get-Date -Format "HH:mm:ss"), $m) }
 Log "watcher started (pid $PID)"
@@ -57,14 +57,14 @@ using System.Windows.Forms;
 public class OverlayForm : Form {
     protected override bool ShowWithoutActivation { get { return true; } }
     protected override CreateParams CreateParams {
-        get { CreateParams p = base.CreateParams; p.ExStyle |= 0x80 | 0x08000000; return p; }
+        get { CreateParams p = base.CreateParams; p.ExStyle |= 0x80 | 0x08000000 | 0x20;   // tool window, never takes focus, mouse clicks pass straight through return p; }
     }
 }
 "@
 } catch { $overlayOk = $false; Log "overlay fallback: $($_.Exception.Message)" }
 
 # Shows plain text (no background) in the middle of the screen. White text with a thin dark outline so it
-# is readable on any wallpaper. Click the text to dismiss; it also goes away after 30 minutes.
+# is readable on any wallpaper. It cannot be dismissed on the PC (clicks pass through it): only the phone removes it.
 function Show-Message($text) {
     if ($script:form) { $script:form.Close(); $script:form = $null }
     $key = [System.Drawing.Color]::FromArgb(1, 2, 3)   # this colour is made fully transparent
@@ -95,10 +95,10 @@ function Show-Message($text) {
         $r = New-Object System.Drawing.RectangleF(0, 0, $s.ClientSize.Width, $s.ClientSize.Height)
         $g.DrawString($s.Tag.Text, $s.Tag.Font, [System.Drawing.Brushes]::White, $r, $sf)
     })
-    $fm.Add_Click({ if ($script:form) { $script:form.Close() } })
-    $fm.Add_FormClosed({ $script:form = $null })
+    $fm.Add_FormClosed({ $script:form = $null; Remove-Item "$($script:dir)\message.on" -Force -ErrorAction SilentlyContinue })
     $fm.Show()
-    $script:form = $fm; $script:formEnd = (Get-Date).AddMinutes(30)
+    $script:form = $fm
+    Set-Content "$($script:dir)\message.on" "1"   # lets the phone know a message is showing
 }
 $form = $null; $formEnd = [datetime]::MinValue
 
@@ -148,7 +148,6 @@ while ($true) {
         }
     }
     [System.Windows.Forms.Application]::DoEvents()
-    if ($form -and (Get-Date) -gt $formEnd) { $form.Close(); $form = $null }
     if (Test-Path $clrf) {   # "remove message" from the phone
         Remove-Item $clrf -Force -ErrorAction SilentlyContinue
         if ($form) { $form.Close(); $form = $null }

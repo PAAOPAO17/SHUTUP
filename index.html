@@ -35,13 +35,19 @@ body{background:var(--bg);color:var(--text);font:16px/1.4 system-ui,-apple-syste
 .msg{min-height:1.5em;text-align:center;color:var(--muted);transition:color .2s}
 .msg.err{color:var(--accent)}
 .lock{display:none;flex-direction:column;align-items:center;gap:1rem;width:100%;max-width:260px}
-.locked .lock{display:flex}.locked .power,.locked .status,.locked .row,.locked #msg{display:none}
+.locked .lock{display:flex}.locked .power,.locked .status,.locked .tiles,.locked #msg{display:none}
 .lock input{width:100%;padding:.9rem 1rem;border-radius:.8rem;border:1px solid #2a323f;background:var(--surface);color:var(--text);font:inherit;text-align:center;letter-spacing:.3em;outline:none}
 .lock input:focus{border-color:var(--accent)}
 .lock button{width:100%;padding:.9rem;border:0;border-radius:.8rem;background:var(--text);color:var(--bg);font:inherit;font-weight:600;cursor:pointer}
 .link{background:none;border:0;color:var(--muted);font:inherit;font-size:.85rem;cursor:pointer;padding:.5rem}
 .lock .link{width:auto;background:none;color:var(--muted);font-weight:400}
-.row{display:flex;gap:.25rem 1rem;flex-wrap:wrap;justify-content:center;max-width:90vw}
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:.6rem;width:100%;max-width:340px}
+.tile{background:var(--surface);border:1px solid #2a323f;color:var(--text);border-radius:.8rem;padding:.8rem .4rem;font:inherit;font-size:.9rem;cursor:pointer;text-align:center;text-align-last:center;appearance:none;-webkit-appearance:none;transition:border-color .2s,transform .1s}
+.tile:hover{border-color:#3a4556}.tile:active{transform:scale(.97)}
+.tile.wide{grid-column:1/-1}
+.tile.accent{border-color:var(--accent);color:var(--accent)}
+.tile[hidden]{display:none}
+select.tile option{background:var(--surface);color:var(--text)}
 #viewer{position:fixed;inset:0;background:#000;display:flex;align-items:center;justify-content:center;z-index:10}
 #viewer[hidden]{display:none}
 #screen{max-width:100%;max-height:100%;object-fit:contain}
@@ -51,12 +57,10 @@ body{background:var(--bg);color:var(--text);font:16px/1.4 system-ui,-apple-syste
 .vbot{top:auto;bottom:0;justify-content:center;gap:.5rem;padding:.75rem 1rem calc(env(safe-area-inset-bottom) + .75rem);background:linear-gradient(transparent,#000b)}
 .msgbox{display:none;flex-direction:column;align-items:center;gap:1rem;width:100%;max-width:320px}
 .composing .msgbox{display:flex}
-.composing .power,.composing .status,.composing .row,.composing #msg{display:none}
+.composing .power,.composing .status,.composing .tiles,.composing #msg{display:none}
 .msgbox textarea{width:100%;min-height:7rem;padding:.9rem 1rem;border-radius:.8rem;border:1px solid #2a323f;background:var(--surface);color:var(--text);font:inherit;resize:none;outline:none}
 .msgbox textarea:focus{border-color:var(--accent)}
 .msgbox .send{width:100%;padding:.9rem;border:0;border-radius:.8rem;background:var(--text);color:var(--bg);font:inherit;font-weight:600;cursor:pointer}
-select.link{appearance:none;-webkit-appearance:none;text-align:center;text-align-last:center}
-select.link option{background:var(--surface);color:var(--text)}
 .shake{animation:shake .35s}
 @keyframes shake{25%{transform:translateX(-8px)}75%{transform:translateX(8px)}}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
@@ -80,13 +84,13 @@ select.link option{background:var(--surface);color:var(--text)}
     <button type="button" class="link" id="cancelEnroll">Cancel</button>
   </form>
   <div class="msgbox" id="msgbox">
-    <p class="msg" style="margin:0">Shows as plain text on your PC until you remove it.</p>
+    <p class="msg" style="margin:0">Shows as plain text on your PC. It can only be removed from your phone.</p>
     <textarea id="msgText" maxlength="300" placeholder="Your message" aria-label="Message"></textarea>
     <button class="send" id="msgSend">Send to PC</button>
     <p class="msg" id="msgInfo"></p>
     <button type="button" class="link" id="msgCancel">Cancel</button>
   </div>
-  <div class="row"><button class="link" id="viewbtn">View screen</button><button class="link" id="msgbtn">Send message</button><button class="link" id="clearbtn" hidden>Clear message</button><button class="link" id="notifybtn">Notify me</button><button class="link" id="installbtn" hidden>Install app</button><button class="link" id="addfp">Add fingerprint</button><span style="flex-basis:100%;height:0"></span><button class="link" id="lockbtn">Lock PC</button><button class="link" id="restartbtn">Restart PC</button><button class="link" id="alertbtn">Activity alerts</button><select class="link" id="idlesel" aria-label="Idle alert time"><option value="1">Idle alert: 1 min</option><option value="2">Idle alert: 2 min</option><option value="5">Idle alert: 5 min</option><option value="10">Idle alert: 10 min</option><option value="15">Idle alert: 15 min</option><option value="30">Idle alert: 30 min</option></select></div>
+  <div class="tiles"><button class="tile wide accent" id="clearbtn" hidden>Remove message from PC</button><button class="tile" id="viewbtn">View screen</button><button class="tile" id="msgbtn">Send message</button><button class="tile" id="lockbtn">Lock PC</button><button class="tile" id="restartbtn">Restart PC</button><button class="tile" id="alertbtn">Activity alerts</button><select class="tile" id="idlesel" aria-label="Idle alert time"><option value="1">Idle alert: 1 min</option><option value="2">Idle alert: 2 min</option><option value="5">Idle alert: 5 min</option><option value="10">Idle alert: 10 min</option><option value="15">Idle alert: 15 min</option><option value="30">Idle alert: 30 min</option></select><button class="tile" id="notifybtn">Notify me</button><button class="tile" id="addfp">Add fingerprint</button><button class="tile wide" id="installbtn" hidden>Install app</button></div>
   <div id="viewer" hidden><img id="screen" alt="PC screen"><div class="vbar"><span id="vstat">Connecting…</span><button id="vclear" hidden>Clear message</button><button id="vclose">Close</button></div><div class="vbar vbot"><button data-q="low">Data saver</button><button data-q="med">Balanced</button><button data-q="high">Sharp</button></div></div>
 
 <script>
@@ -196,6 +200,7 @@ async function ping() {
     const j = await (await fetch("/api/ping", {cache: "no-store", signal: AbortSignal.timeout(3000)})).json();
     const ok = j.watcher !== false;
     if (typeof j.alerts === "boolean") { alertsOn = j.alerts; showAlerts(); }
+    msgOn = !!j.message; showClr();
     if (typeof j.idle === "number") { idleMin = j.idle; if (document.activeElement !== $("idlesel")) $("idlesel").value = idleMin; }
     $("status").classList.toggle("offline", !ok); $("statusText").textContent = ok ? "Connected" : "PC helper not running";
   } catch { $("status").classList.add("offline"); $("statusText").textContent = "PC offline"; }
@@ -287,7 +292,8 @@ $("idlesel").onchange = async () => {
 };
 // remove the message instantly (this phone gets a key when it sends; falls back to a fingerprint scan)
 let clr = "";
-function showClr() { $("clearbtn").hidden = $("vclear").hidden = !clr; }
+let msgOn = false;   // is a message showing on the PC right now? (the PC tells us)
+function showClr() { $("clearbtn").hidden = $("vclear").hidden = !msgOn; }
 function setClr(t) {
   clr = t; showClr();
   try { t ? localStorage.setItem("clr", JSON.stringify({t, exp: Date.now() + 29 * 60000})) : localStorage.removeItem("clr"); } catch {}
@@ -301,7 +307,7 @@ async function clearMessage() {
     if (r.status === 401) r = await post("/api/message/clear", null, {"X-Token": await biometric()});
     if (r.status === 503) throw new Error("PC helper isn't running.");
     if (!r.ok) throw new Error("Couldn't remove the message.");
-    setClr(""); note("Message removed ✓");
+    msgOn = false; setClr(""); note("Message removed ✓"); setTimeout(ping, 1200);
   } catch (e) {
     if (e === "enroll") return document.body.classList.add("locked");
     note(e.name === "NotAllowedError" ? "Cancelled." : (e.message || "Something went wrong."), true);
@@ -320,7 +326,7 @@ $("msgSend").onclick = async () => {
     const r = await post("/api/message", {text}, {"X-Token": await biometric()});
     if (r.status === 503) throw new Error("PC helper isn't running.");
     if (!r.ok) throw new Error("Couldn't send the message.");
-    setClr((await r.json()).clear);
+    msgOn = true; setClr((await r.json()).clear); setTimeout(ping, 1500);
     $("msgText").value = ""; document.body.classList.remove("composing"); say("Message shown on your PC ✓");
   } catch (e) {
     if (e === "enroll") { document.body.classList.remove("composing"); return document.body.classList.add("locked"); }

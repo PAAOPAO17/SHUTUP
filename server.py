@@ -178,7 +178,7 @@ class H(BaseHTTPRequestHandler):
             except Exception as ex: print("qr error:", ex, flush=True); self.out(501)
         elif self.path in STATIC: self.out(200, *STATIC[self.path])
         elif self.path == "/api/push/key": self.out(200, json.dumps({"key": VAPID_PUB}).encode())
-        elif self.path == "/api/ping": self.out(200, json.dumps({"enrolled": bool(creds), "watcher": watcher_alive(), "alerts": settings["activity_alerts"], "idle": settings["idle_minutes"]}).encode())
+        elif self.path == "/api/ping": self.out(200, json.dumps({"enrolled": bool(creds), "watcher": watcher_alive(), "alerts": settings["activity_alerts"], "idle": settings["idle_minutes"], "message": os.path.exists("/trigger/message.on")}).encode())
         elif self.path.startswith("/api/stream?"):
             qs = parse_qs(urlsplit(self.path).query)
             exp = vtokens.get(qs.get("t", [""])[0], 0)
