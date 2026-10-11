@@ -21,7 +21,7 @@ public class Native {
 
 $dir = "C:\pc-remote-trigger"
 $f = "$dir\shutdown"; $hb = "$dir\view"; $img = "$dir\screen.jpg"; $tmp = "$dir\screen.tmp"; $logf = "$dir\watcher.log"; $msgf = "$dir\message.txt"; $clrf = "$dir\message.clear"
-Remove-Item $f, $hb, $img, $tmp, "$dir\message.txt", "$dir\message.tmp", "$dir\message.clear", "$dir\activity.txt", "$dir\activity.tmp" -Force -ErrorAction SilentlyContinue
+Remove-Item $f, $hb, $img, $tmp, "$dir\message.txt", "$dir\message.tmp", "$dir\message.clear", "$dir\activity.txt", "$dir\activity.tmp", "$dir\action.txt", "$dir\action.tmp" -Force -ErrorAction SilentlyContinue
 Set-Content $logf ""
 function Log($m) { Add-Content $logf ("{0} {1}" -f (Get-Date -Format "HH:mm:ss"), $m) }
 Log "watcher started (pid $PID)"
@@ -40,6 +40,7 @@ $bmp = $null; $wasViewing = $false; $lastErr = ""; $lastAlive = [datetime]::MinV
 # activity alert: PC idle for $idleLimit seconds, then used again -> tell the container (which notifies your phone)
 $idleLimit = 300; $wasIdle = $false; $maxIdle = 0; $lastIdleCheck = [datetime]::MinValue
 $actf = "$dir\activity.txt"; $actTmp = "$dir\activity.tmp"
+$pwrf = "$dir\action.txt"; $cfgf = "$dir\config.json"; $lastCfg = [datetime]::MinValue
 $curProf = ""; $prof = "med"; $lastProfCheck = [datetime]::MinValue; $lastHash = ""; $cfg = $profiles["med"]
 
 function Stop-Capture {
@@ -127,6 +128,10 @@ while ($true) {
         try { Set-Content "$dir\alive" (Get-Date -Format o) } catch { }
         $lastAlive = Get-Date
     }
+    if (((Get-Date) - $lastCfg).TotalSeconds -ge 10) {   # idle time chosen in the app
+        $lastCfg = Get-Date
+        try { $c = [System.IO.File]::ReadAllText($cfgf) | ConvertFrom-Json; if ([int]$c.idle_seconds -ge 30) { $idleLimit = [int]$c.idle_seconds } } catch { }
+    }
     if (((Get-Date) - $lastIdleCheck).TotalMilliseconds -ge 1000) {   # idle / activity detection
         $lastIdleCheck = Get-Date
         $idle = [Native]::IdleMs() / 1000
@@ -156,6 +161,14 @@ while ($true) {
             Log "message shown"
             Show-Message $text
         } catch { }   # file briefly in use: try again next loop
+    }
+    if (Test-Path $pwrf) {   # restart / lock from the phone
+        try {
+            $act = ([System.IO.File]::ReadAllText($pwrf)).Trim(); Remove-Item $pwrf -Force
+            Log "action: $act"
+            if ($act -eq "restart") { shutdown.exe /r /t 0 /f }
+            elseif ($act -eq "lock") { rundll32.exe user32.dll,LockWorkStation }
+        } catch { }
     }
     if (Test-Path $f) { Log "shutdown requested"; Remove-Item $f -Force; shutdown.exe /s /t 0 /f; break }
 

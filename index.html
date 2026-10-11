@@ -55,6 +55,8 @@ body{background:var(--bg);color:var(--text);font:16px/1.4 system-ui,-apple-syste
 .msgbox textarea{width:100%;min-height:7rem;padding:.9rem 1rem;border-radius:.8rem;border:1px solid #2a323f;background:var(--surface);color:var(--text);font:inherit;resize:none;outline:none}
 .msgbox textarea:focus{border-color:var(--accent)}
 .msgbox .send{width:100%;padding:.9rem;border:0;border-radius:.8rem;background:var(--text);color:var(--bg);font:inherit;font-weight:600;cursor:pointer}
+select.link{appearance:none;-webkit-appearance:none;text-align:center;text-align-last:center}
+select.link option{background:var(--surface);color:var(--text)}
 .shake{animation:shake .35s}
 @keyframes shake{25%{transform:translateX(-8px)}75%{transform:translateX(8px)}}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
@@ -84,7 +86,7 @@ body{background:var(--bg);color:var(--text);font:16px/1.4 system-ui,-apple-syste
     <p class="msg" id="msgInfo"></p>
     <button type="button" class="link" id="msgCancel">Cancel</button>
   </div>
-  <div class="row"><button class="link" id="viewbtn">View screen</button><button class="link" id="msgbtn">Send message</button><button class="link" id="clearbtn" hidden>Clear message</button><button class="link" id="notifybtn">Notify me</button><button class="link" id="alertbtn">Activity alerts</button><button class="link" id="installbtn" hidden>Install app</button><button class="link" id="addfp">Add fingerprint</button></div>
+  <div class="row"><button class="link" id="viewbtn">View screen</button><button class="link" id="msgbtn">Send message</button><button class="link" id="clearbtn" hidden>Clear message</button><button class="link" id="notifybtn">Notify me</button><button class="link" id="installbtn" hidden>Install app</button><button class="link" id="addfp">Add fingerprint</button><span style="flex-basis:100%;height:0"></span><button class="link" id="lockbtn">Lock PC</button><button class="link" id="restartbtn">Restart PC</button><button class="link" id="alertbtn">Activity alerts</button><select class="link" id="idlesel" aria-label="Idle alert time"><option value="1">Idle alert: 1 min</option><option value="2">Idle alert: 2 min</option><option value="5">Idle alert: 5 min</option><option value="10">Idle alert: 10 min</option><option value="15">Idle alert: 15 min</option><option value="30">Idle alert: 30 min</option></select></div>
   <div id="viewer" hidden><img id="screen" alt="PC screen"><div class="vbar"><span id="vstat">Connecting…</span><button id="vclear" hidden>Clear message</button><button id="vclose">Close</button></div><div class="vbar vbot"><button data-q="low">Data saver</button><button data-q="med">Balanced</button><button data-q="high">Sharp</button></div></div>
 
 <script>
@@ -194,6 +196,7 @@ async function ping() {
     const j = await (await fetch("/api/ping", {cache: "no-store", signal: AbortSignal.timeout(3000)})).json();
     const ok = j.watcher !== false;
     if (typeof j.alerts === "boolean") { alertsOn = j.alerts; showAlerts(); }
+    if (typeof j.idle === "number") { idleMin = j.idle; if (document.activeElement !== $("idlesel")) $("idlesel").value = idleMin; }
     $("status").classList.toggle("offline", !ok); $("statusText").textContent = ok ? "Connected" : "PC helper not running";
   } catch { $("status").classList.add("offline"); $("statusText").textContent = "PC offline"; }
 }
@@ -245,8 +248,39 @@ $("alertbtn").onclick = async () => {
     const r = await post("/api/alerts", {on: !alertsOn}, {"X-Token": await biometric()});
     if (!r.ok) throw new Error("Couldn't change the setting.");
     alertsOn = (await r.json()).on; showAlerts();
-    say(alertsOn ? "Alerts on. You'll be told when your PC is used after 5 minutes idle." : "Activity alerts off.");
+    say(alertsOn ? "Alerts on. You'll be told when your PC is used after " + idleMin + " min idle." : "Activity alerts off.");
   } catch (e) {
+    if (e === "enroll") return document.body.classList.add("locked");
+    say(e.name === "NotAllowedError" ? "Cancelled." : (e.message || "Something went wrong."), true);
+  }
+};
+// restart / lock the PC, and choose how long "idle" is
+let idleMin = 5;
+async function powerAction(action, done) {
+  if (!secure) return say("Fingerprint needs the https:// address (see setup).", true);
+  say("Confirm with your fingerprint");
+  try {
+    const r = await post("/api/power", {action}, {"X-Token": await biometric()});
+    if (r.status === 503) throw new Error("PC helper isn't running.");
+    if (!r.ok) throw new Error("Couldn't send the command.");
+    say(done);
+  } catch (e) {
+    if (e === "enroll") return document.body.classList.add("locked");
+    say(e.name === "NotAllowedError" ? "Cancelled." : (e.message || "Something went wrong."), true);
+  }
+}
+$("lockbtn").onclick = () => powerAction("lock", "PC locked ✓");
+$("restartbtn").onclick = () => { if (confirm("Restart your PC now? Unsaved work will be lost.")) powerAction("restart", "Restarting…"); };
+$("idlesel").onchange = async () => {
+  const sel = $("idlesel"), want = +sel.value;
+  if (!secure) { sel.value = idleMin; return say("Fingerprint needs the https:// address (see setup).", true); }
+  say("Confirm with your fingerprint");
+  try {
+    const r = await post("/api/idle", {minutes: want}, {"X-Token": await biometric()});
+    if (!r.ok) throw new Error("Couldn't change the setting.");
+    idleMin = (await r.json()).minutes; say("You'll be alerted after " + idleMin + " min idle.");
+  } catch (e) {
+    sel.value = idleMin;
     if (e === "enroll") return document.body.classList.add("locked");
     say(e.name === "NotAllowedError" ? "Cancelled." : (e.message || "Something went wrong."), true);
   }

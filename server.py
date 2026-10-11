@@ -86,7 +86,14 @@ SETTINGS_DB = "/data/settings.json"
 try: settings = json.load(open(SETTINGS_DB))
 except Exception: settings = {}
 settings.setdefault("activity_alerts", True)
+settings.setdefault("idle_minutes", 5)
 def save_settings(): json.dump(settings, open(SETTINGS_DB, "w"))
+
+def write_config():   # tells the Windows helper how long "idle" is
+    try:
+        with open("/trigger/config.json.tmp", "w") as fh: json.dump({"idle_seconds": int(settings["idle_minutes"]) * 60}, fh)
+        os.replace("/trigger/config.json.tmp", "/trigger/config.json")
+    except Exception as ex: print("config error:", ex, flush=True)
 if not settings.get("pin"):   # first run: make a random setup PIN (shown on the setup page, changeable there)
     settings["pin"] = os.environ.get("PIN") or "".join(secrets.choice("0123456789") for _ in range(6))
     save_settings()
@@ -171,7 +178,7 @@ class H(BaseHTTPRequestHandler):
             except Exception as ex: print("qr error:", ex, flush=True); self.out(501)
         elif self.path in STATIC: self.out(200, *STATIC[self.path])
         elif self.path == "/api/push/key": self.out(200, json.dumps({"key": VAPID_PUB}).encode())
-        elif self.path == "/api/ping": self.out(200, json.dumps({"enrolled": bool(creds), "watcher": watcher_alive(), "alerts": settings["activity_alerts"]}).encode())
+        elif self.path == "/api/ping": self.out(200, json.dumps({"enrolled": bool(creds), "watcher": watcher_alive(), "alerts": settings["activity_alerts"], "idle": settings["idle_minutes"]}).encode())
         elif self.path.startswith("/api/stream?"):
             qs = parse_qs(urlsplit(self.path).query)
             exp = vtokens.get(qs.get("t", [""])[0], 0)
@@ -264,6 +271,20 @@ class H(BaseHTTPRequestHandler):
             elif p == "/api/setup/reset":   # forget all registered phones
                 if not self.local(): return self.out(403)
                 creds.clear(); save(); self.out()
+            elif p == "/api/idle":
+                if tokens.pop(self.headers.get("X-Token", ""), 0) < time.time(): return self.out(401)
+                m = int(json.loads(self.body()).get("minutes", 0))
+                if m not in (1, 2, 5, 10, 15, 30): return self.out(400)
+                settings["idle_minutes"] = m; save_settings(); write_config()
+                self.out(200, json.dumps({"minutes": m}).encode())
+            elif p == "/api/power":   # restart or lock the PC (the Windows helper carries it out)
+                if tokens.pop(self.headers.get("X-Token", ""), 0) < time.time(): return self.out(401)
+                if not watcher_alive(): return self.out(503)
+                act = str(json.loads(self.body()).get("action", ""))
+                if act not in ("restart", "lock"): return self.out(400)
+                with open("/trigger/action.tmp", "w") as fh: fh.write(act)
+                os.replace("/trigger/action.tmp", "/trigger/action.txt")
+                self.out()
             elif p == "/api/alerts":
                 if tokens.pop(self.headers.get("X-Token", ""), 0) < time.time(): return self.out(401)
                 settings["activity_alerts"] = bool(json.loads(self.body()).get("on")); save_settings()
@@ -287,6 +308,7 @@ class H(BaseHTTPRequestHandler):
 if __name__ == "__main__":
     print("PC Remote on :8080", flush=True)
     threading.Thread(target=announce, daemon=True).start()
+    write_config()
     threading.Thread(target=_poll_alive, daemon=True).start()
     threading.Thread(target=_activity_loop, daemon=True).start()
     ThreadingHTTPServer(("0.0.0.0", 8080), H).serve_forever()
