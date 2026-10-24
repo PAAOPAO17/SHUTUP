@@ -2,6 +2,36 @@
 # Writes C:\pc-remote-trigger\watcher.log so problems are visible.
 Add-Type -AssemblyName System.Windows.Forms, System.Drawing
 Add-Type @"
+using System.Runtime.InteropServices;
+[Guid("5CDF2C82-841E-4546-9722-0CF74078229A"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+interface IAudioEndpointVolume {
+    int f1(); int f2(); int f3(); int f4();
+    int SetMasterVolumeLevelScalar(float level, System.Guid context);
+    int f6(); int GetMasterVolumeLevelScalar(out float level);
+    int f8(); int f9(); int f10();
+    int SetMute([MarshalAs(UnmanagedType.Bool)] bool mute, System.Guid context);
+    int GetMute([MarshalAs(UnmanagedType.Bool)] out bool mute);
+}
+[Guid("D666063F-1587-4E43-81F1-B948E807363F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+interface IMMDevice { int Activate(ref System.Guid id, int ctx, System.IntPtr aa, out IAudioEndpointVolume vol); }
+[Guid("A95664D2-9614-4F35-A746-DE8DB63617E6"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+interface IMMDeviceEnumerator { int f1(); int GetDefaultAudioEndpoint(int dataFlow, int role, out IMMDevice ep); }
+[ComImport, Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")] class MMDeviceEnumeratorComObject { }
+public class Vol {
+    static IAudioEndpointVolume Ep() {
+        var en = (IMMDeviceEnumerator)new MMDeviceEnumeratorComObject();
+        en.GetDefaultAudioEndpoint(0, 1, out IMMDevice dev);
+        var g = typeof(IAudioEndpointVolume).GUID;
+        dev.Activate(ref g, 1, System.IntPtr.Zero, out IAudioEndpointVolume ep);
+        return ep;
+    }
+    public static int GetLevel() { Ep().GetMasterVolumeLevelScalar(out float l); return (int)System.Math.Round(l * 100); }
+    public static bool GetMute() { Ep().GetMute(out bool m); return m; }
+    public static void SetLevel(int pct) { Ep().SetMasterVolumeLevelScalar(pct / 100f, System.Guid.Empty); }
+    public static void SetMute(bool m) { Ep().SetMute(m, System.Guid.Empty); }
+}
+"@
+Add-Type @"
 using System;
 using System.Runtime.InteropServices;
 public class Native {
@@ -21,7 +51,7 @@ public class Native {
 
 $dir = "C:\pc-remote-trigger"
 $f = "$dir\shutdown"; $hb = "$dir\view"; $img = "$dir\screen.jpg"; $tmp = "$dir\screen.tmp"; $logf = "$dir\watcher.log"; $msgf = "$dir\message.txt"; $clrf = "$dir\message.clear"
-Remove-Item $f, $hb, $img, $tmp, "$dir\message.txt", "$dir\message.tmp", "$dir\message.clear", "$dir\activity.txt", "$dir\activity.tmp", "$dir\action.txt", "$dir\action.tmp", "$dir\message.on" -Force -ErrorAction SilentlyContinue
+Remove-Item $f, $hb, $img, $tmp, "$dir\message.txt", "$dir\message.tmp", "$dir\message.clear", "$dir\activity.txt", "$dir\activity.tmp", "$dir\action.txt", "$dir\action.tmp", "$dir\message.on", "$dir\volume.txt", "$dir\volume.tmp" -Force -ErrorAction SilentlyContinue
 Set-Content $logf ""
 function Log($m) { Add-Content $logf ("{0} {1}" -f (Get-Date -Format "HH:mm:ss"), $m) }
 Log "watcher started (pid $PID)"
@@ -41,6 +71,7 @@ $bmp = $null; $wasViewing = $false; $lastErr = ""; $lastAlive = [datetime]::MinV
 $idleLimit = 300; $wasIdle = $false; $maxIdle = 0; $lastIdleCheck = [datetime]::MinValue
 $actf = "$dir\activity.txt"; $actTmp = "$dir\activity.tmp"
 $pwrf = "$dir\action.txt"; $cfgf = "$dir\config.json"; $lastCfg = [datetime]::MinValue
+$volf = "$dir\volume.txt"; $audiof = "$dir\audio.json"; $lastAudio = [datetime]::MinValue
 $curProf = ""; $prof = "med"; $lastProfCheck = [datetime]::MinValue; $lastHash = ""; $cfg = $profiles["med"]
 
 function Stop-Capture {
@@ -162,6 +193,18 @@ while ($true) {
             Log "message shown"
             Show-Message $text
         } catch { }   # file briefly in use: try again next loop
+    }
+    if (Test-Path $volf) {   # volume / mute from the phone
+        try {
+            $c = [System.IO.File]::ReadAllText($volf) | ConvertFrom-Json; Remove-Item $volf -Force
+            if ($null -ne $c.level) { [Vol]::SetLevel([int]$c.level) }
+            if ($null -ne $c.mute)  { [Vol]::SetMute([bool]$c.mute) }
+            Log ("volume: level=" + $c.level + " mute=" + $c.mute)
+        } catch { Log "volume error: $($_.Exception.Message)" }
+    }
+    if (((Get-Date) - $lastAudio).TotalSeconds -ge 1) {   # report current level so sliders on other phones stay in sync
+        $lastAudio = Get-Date
+        try { Set-Content $audiof (@{ level = [Vol]::GetLevel(); mute = [Vol]::GetMute() } | ConvertTo-Json -Compress) } catch { }
     }
     if (Test-Path $pwrf) {   # restart / lock from the phone
         try {

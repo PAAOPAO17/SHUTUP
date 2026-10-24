@@ -103,6 +103,11 @@ def _info():   # Tailscale name / state: written by the Windows helper (info.jso
     except Exception: pass
     return _info_mac()
 
+def _audio():
+    try: a = json.load(open("/trigger/audio.json"))
+    except Exception: return {}
+    return {"volume": a.get("level"), "muted": a.get("mute")}
+
 def _info_mac():
     try: st = json.load(open("/trigger/ts-status.json"))
     except Exception: return {}
@@ -194,7 +199,7 @@ class H(BaseHTTPRequestHandler):
             except Exception as ex: print("qr error:", ex, flush=True); self.out(501)
         elif self.path in STATIC: self.out(200, *STATIC[self.path])
         elif self.path == "/api/push/key": self.out(200, json.dumps({"key": VAPID_PUB}).encode())
-        elif self.path == "/api/ping": self.out(200, json.dumps({"enrolled": bool(creds), "watcher": watcher_alive(), "alerts": settings["activity_alerts"], "idle": settings["idle_minutes"], "message": os.path.exists("/trigger/message.on")}).encode())
+        elif self.path == "/api/ping": self.out(200, json.dumps({"enrolled": bool(creds), "watcher": watcher_alive(), "alerts": settings["activity_alerts"], "idle": settings["idle_minutes"], "message": os.path.exists("/trigger/message.on"), **_audio()}).encode())
         elif self.path.startswith("/api/stream?"):
             qs = parse_qs(urlsplit(self.path).query)
             exp = vtokens.get(qs.get("t", [""])[0], 0)
@@ -293,6 +298,19 @@ class H(BaseHTTPRequestHandler):
                 if m not in (1, 2, 5, 10, 15, 30): return self.out(400)
                 settings["idle_minutes"] = m; save_settings(); write_config()
                 self.out(200, json.dumps({"minutes": m}).encode())
+            elif p == "/api/volume":   # set volume (0-100) and/or mute, carried out by the helper
+                if tokens.pop(self.headers.get("X-Token", ""), 0) < time.time(): return self.out(401)
+                if not watcher_alive(): return self.out(503)
+                b = json.loads(self.body()); cmd = {}
+                if "level" in b:
+                    lvl = int(b["level"])
+                    if not (0 <= lvl <= 100): return self.out(400)
+                    cmd["level"] = lvl
+                if "mute" in b: cmd["mute"] = bool(b["mute"])
+                if not cmd: return self.out(400)
+                with open("/trigger/volume.tmp", "w") as fh: json.dump(cmd, fh)
+                os.replace("/trigger/volume.tmp", "/trigger/volume.txt")
+                self.out()
             elif p == "/api/power":   # restart or lock the PC (the Windows helper carries it out)
                 if tokens.pop(self.headers.get("X-Token", ""), 0) < time.time(): return self.out(401)
                 if not watcher_alive(): return self.out(503)

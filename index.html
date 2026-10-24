@@ -48,6 +48,18 @@ body{background:var(--bg);color:var(--text);font:16px/1.4 system-ui,-apple-syste
 .tile.accent{border-color:var(--accent);color:var(--accent)}
 .tile[hidden]{display:none}
 select.tile option{background:var(--surface);color:var(--text)}
+.volcard{background:var(--surface);border:1px solid #2a323f;border-radius:1rem;padding:1rem 1.1rem;width:100%;max-width:340px;display:flex;align-items:center;gap:.8rem}
+.volcard button{background:none;border:0;color:var(--text);padding:.2rem;cursor:pointer;flex:none;display:grid;place-items:center}
+.volcard button svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.volcard.muted{color:var(--muted)}
+.volwrap{flex:1;display:flex;align-items:center}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:1.6rem;background:transparent;margin:0}
+input[type=range]::-webkit-slider-runnable-track{height:.4rem;border-radius:1rem;background:#2a323f}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:1.3rem;height:1.3rem;margin-top:-.45rem;border-radius:50%;background:var(--text);box-shadow:0 1px 3px #0006;transition:transform .12s}
+input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
+input[type=range]::-moz-range-track{height:.4rem;border-radius:1rem;background:#2a323f}
+input[type=range]::-moz-range-thumb{width:1.3rem;height:1.3rem;border:0;border-radius:50%;background:var(--text);box-shadow:0 1px 3px #0006}
+.volpct{width:2.6rem;text-align:right;color:var(--muted);font-size:.85rem;flex:none;font-variant-numeric:tabular-nums}
 #viewer{position:fixed;inset:0;background:#000;display:flex;align-items:center;justify-content:center;z-index:10}
 #viewer[hidden]{display:none}
 #screen{max-width:100%;max-height:100%;object-fit:contain}
@@ -89,6 +101,11 @@ select.tile option{background:var(--surface);color:var(--text)}
     <button class="send" id="msgSend">Send to PC</button>
     <p class="msg" id="msgInfo"></p>
     <button type="button" class="link" id="msgCancel">Cancel</button>
+  </div>
+  <div class="volcard" id="volcard">
+    <button id="mutebtn" aria-label="Mute"><svg id="volicon" viewBox="0 0 24 24"><path d="M4 9v6h4l5 5V4L8 9H4z"/><path id="vol1" d="M16.5 8.5a5 5 0 0 1 0 7"/><path id="vol2" d="M19 6a9 9 0 0 1 0 12"/><line id="volx" x1="16" y1="9" x2="22" y2="15" style="display:none"/><line id="volx2" x1="22" y1="9" x2="16" y2="15" style="display:none"/></svg></button>
+    <div class="volwrap"><input type="range" id="volslider" min="0" max="100" value="50" aria-label="Volume"></div>
+    <span class="volpct" id="volpct">50%</span>
   </div>
   <div class="tiles"><button class="tile wide accent" id="clearbtn" hidden>Remove message from PC</button><button class="tile" id="viewbtn">View screen</button><button class="tile" id="msgbtn">Send message</button><button class="tile" id="lockbtn">Lock PC</button><button class="tile" id="restartbtn">Restart PC</button><button class="tile" id="alertbtn">Activity alerts</button><select class="tile" id="idlesel" aria-label="Idle alert time"><option value="1">Idle alert: 1 min</option><option value="2">Idle alert: 2 min</option><option value="5">Idle alert: 5 min</option><option value="10">Idle alert: 10 min</option><option value="15">Idle alert: 15 min</option><option value="30">Idle alert: 30 min</option></select><button class="tile" id="notifybtn">Notify me</button><button class="tile" id="addfp">Add fingerprint</button><button class="tile wide" id="installbtn" hidden>Install app</button></div>
   <div id="viewer" hidden><img id="screen" alt="PC screen"><div class="vbar"><span id="vstat">Connecting…</span><button id="vclear" hidden>Clear message</button><button id="vclose">Close</button></div><div class="vbar vbot"><button data-q="low">Data saver</button><button data-q="med">Balanced</button><button data-q="high">Sharp</button></div></div>
@@ -201,6 +218,7 @@ async function ping() {
     const ok = j.watcher !== false;
     if (typeof j.alerts === "boolean") { alertsOn = j.alerts; showAlerts(); }
     msgOn = !!j.message; showClr();
+    if (!volDirty && typeof j.volume === "number") { volLevel = j.volume; volMuted = !!j.muted; paintVol(); }
     if (typeof j.idle === "number") { idleMin = j.idle; if (document.activeElement !== $("idlesel")) $("idlesel").value = idleMin; }
     $("status").classList.toggle("offline", !ok); $("statusText").textContent = ok ? "Connected" : "PC helper not running";
   } catch { $("status").classList.add("offline"); $("statusText").textContent = "PC offline"; }
@@ -259,6 +277,38 @@ $("alertbtn").onclick = async () => {
     say(e.name === "NotAllowedError" ? "Cancelled." : (e.message || "Something went wrong."), true);
   }
 };
+// volume slider: clean, fingerprint-confirmed, synced across phones via /api/ping
+let volBusy = false, volLevel = 50, volMuted = false, volDirty = false;
+function paintVol() {
+  $("volslider").value = volLevel; $("volpct").textContent = volLevel + "%";
+  $("volcard").classList.toggle("muted", volMuted);
+  const show = volMuted ? "x" : volLevel === 0 ? "" : volLevel < 50 ? "1" : "12";
+  $("vol1").style.display = show.includes("1") ? "" : "none";
+  $("vol2").style.display = show === "12" ? "" : "none";
+  $("volx").style.display = $("volx2").style.display = volMuted ? "" : "none";
+}
+async function sendVolume(body) {
+  if (!secure) { volBusy = false; return say("Fingerprint needs the https:// address (see setup).", true); }
+  try {
+    const r = await post("/api/volume", body, {"X-Token": await biometric()});
+    if (r.status === 503) throw new Error("PC helper isn't running.");
+    if (!r.ok) throw new Error("Couldn't change the volume.");
+  } catch (e) {
+    if (e === "enroll") return document.body.classList.add("locked");
+    say(e.name === "NotAllowedError" ? "Cancelled." : (e.message || "Something went wrong."), true);
+  } finally { volBusy = false; }
+}
+$("volslider").oninput = () => { volLevel = +$("volslider").value; volDirty = true; paintVol(); };
+$("volslider").onchange = () => {
+  if (volBusy) return; volBusy = true;
+  const body = {level: volLevel}; if (volMuted && volLevel > 0) { volMuted = false; body.mute = false; }
+  sendVolume(body);
+};
+$("mutebtn").onclick = () => {
+  if (volBusy) return; volBusy = true;
+  volMuted = !volMuted; paintVol(); sendVolume({mute: volMuted});
+};
+
 // restart / lock the PC, and choose how long "idle" is
 let idleMin = 5;
 async function powerAction(action, done) {
