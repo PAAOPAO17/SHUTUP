@@ -22,7 +22,7 @@ UV = UserVerificationRequirement.REQUIRED
 
 try: creds = json.load(open(DB))
 except Exception: creds = []
-chal, tokens, vtokens, ctokens = {}, {}, {}, {}
+chal, tokens, vtokens, ctokens, voltokens = {}, {}, {}, {}, {}
 save = lambda: json.dump(creds, open(DB, "w"))
 desc = lambda: [PublicKeyCredentialDescriptor(id=d(c["id"])) for c in creds]
 
@@ -299,7 +299,15 @@ class H(BaseHTTPRequestHandler):
                 settings["idle_minutes"] = m; save_settings(); write_config()
                 self.out(200, json.dumps({"minutes": m}).encode())
             elif p == "/api/volume":   # set volume (0-100) and/or mute, carried out by the helper
-                if tokens.pop(self.headers.get("X-Token", ""), 0) < time.time(): return self.out(401)
+                # a fingerprint scan unlocks a 15-minute volume session, so dragging the slider
+                # repeatedly doesn't ask for a fingerprint every time
+                vt = self.headers.get("X-Vol-Token", "")
+                if voltokens.get(vt, 0) >= time.time():
+                    pass   # session still valid
+                elif tokens.pop(self.headers.get("X-Token", ""), 0) >= time.time():
+                    vt = secrets.token_urlsafe(24); voltokens[vt] = time.time() + 900
+                else:
+                    return self.out(401)
                 if not watcher_alive(): return self.out(503)
                 b = json.loads(self.body()); cmd = {}
                 if "level" in b:
@@ -310,7 +318,7 @@ class H(BaseHTTPRequestHandler):
                 if not cmd: return self.out(400)
                 with open("/trigger/volume.tmp", "w") as fh: json.dump(cmd, fh)
                 os.replace("/trigger/volume.tmp", "/trigger/volume.txt")
-                self.out()
+                self.out(200, json.dumps({"volToken": vt}).encode())
             elif p == "/api/power":   # restart or lock the PC (the Windows helper carries it out)
                 if tokens.pop(self.headers.get("X-Token", ""), 0) < time.time(): return self.out(401)
                 if not watcher_alive(): return self.out(503)

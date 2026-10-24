@@ -282,7 +282,11 @@ $("alertbtn").onclick = async () => {
   }
 };
 // volume slider: clean, fingerprint-confirmed, synced across phones via /api/ping
-let volBusy = false, volLevel = 50, volMuted = false, volDirty = false;
+let volBusy = false, volLevel = 50, volMuted = false, volDirty = false, volTok = "", volTokExp = 0;
+try {
+  const v = JSON.parse(localStorage.getItem("volTok") || "null");
+  if (v && v.exp > Date.now()) { volTok = v.t; volTokExp = v.exp; }
+} catch {}
 function paintVol() {
   $("volslider").value = volLevel; $("volpct").textContent = volLevel + "%";
   $("volcard").classList.toggle("muted", volMuted);
@@ -294,9 +298,19 @@ function paintVol() {
 async function sendVolume(body) {
   if (!secure) { volBusy = false; return say("Fingerprint needs the https:// address (see setup).", true); }
   try {
-    const r = await post("/api/volume", body, {"X-Token": await biometric()});
+    const haveSession = volTok && volTokExp > Date.now();
+    let r = await post("/api/volume", body, haveSession ? {"X-Vol-Token": volTok} : {"X-Token": await biometric()});
+    if (r.status === 401 && haveSession) {   // session expired on the server: fall back to a fingerprint scan once
+      volTok = ""; try { localStorage.removeItem("volTok"); } catch {}
+      r = await post("/api/volume", body, {"X-Token": await biometric()});
+    }
     if (r.status === 503) throw new Error("PC helper isn't running.");
     if (!r.ok) throw new Error("Couldn't change the volume.");
+    const j = await r.json();
+    if (j.volToken) {
+      volTok = j.volToken; volTokExp = Date.now() + 15 * 60000;
+      try { localStorage.setItem("volTok", JSON.stringify({t: volTok, exp: volTokExp})); } catch {}
+    }
   } catch (e) {
     if (e === "enroll") return document.body.classList.add("locked");
     say(e.name === "NotAllowedError" ? "Cancelled." : (e.message || "Something went wrong."), true);
