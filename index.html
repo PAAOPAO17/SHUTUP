@@ -19,6 +19,9 @@ body{background:var(--bg);color:var(--text);font:16px/1.4 system-ui,-apple-syste
   display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2.5rem;
   padding:env(safe-area-inset-top) 1.5rem env(safe-area-inset-bottom);user-select:none;-webkit-user-select:none;touch-action:manipulation}
 .status{display:flex;align-items:center;gap:.6rem;color:var(--muted);font-size:.95rem}
+.tsbtn{display:none;align-items:center;gap:.4rem;margin-top:.6rem;padding:.5rem 1rem;border-radius:2rem;border:1px solid #2a323f;background:var(--surface);color:var(--text);font:inherit;font-size:.85rem;cursor:pointer}
+.offline .tsbtn{display:inline-flex}
+.tsbtn svg{width:16px;height:16px}
 .dot{width:.6rem;height:.6rem;border-radius:50%;background:var(--ok);box-shadow:0 0 0 0 var(--ok);animation:pulse 2.4s infinite}
 .offline .dot{background:var(--muted);animation:none}
 @keyframes pulse{70%{box-shadow:0 0 0 10px transparent}100%{box-shadow:0 0 0 0 transparent}}
@@ -80,6 +83,7 @@ input[type=range]::-moz-range-thumb{width:1.3rem;height:1.3rem;border:0;border-r
 </head>
 <body>
   <div class="status" id="status"><span class="dot"></span><span id="statusText">Connected</span></div>
+  <button class="tsbtn" id="tsbtn" type="button"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="3"/><circle cx="5" cy="5" r="2.2"/><circle cx="19" cy="5" r="2.2"/><circle cx="5" cy="19" r="2.2"/><circle cx="19" cy="19" r="2.2"/></svg>Open Tailscale</button>
 
   <button class="power" id="power" aria-label="Hold to shut down">
     <svg viewBox="0 0 120 120"><circle class="track" cx="60" cy="60" r="54"/><circle class="ring" id="ring" cx="60" cy="60" r="50"/></svg>
@@ -385,6 +389,22 @@ $("msgSend").onclick = async () => {
 };
 $("viewbtn").onclick = openView;
 $("vclose").onclick = () => closeView();
+// "Open Tailscale" - jumps straight to the Tailscale app so you don't have to hunt for its icon
+function openTailscale() {
+  const ua = navigator.userAgent || "", isIOS = /iPhone|iPad|iPod/.test(ua), isAndroid = /Android/.test(ua);
+  const store = isIOS ? "https://apps.apple.com/app/tailscale/id1470499037" : "https://play.google.com/store/apps/details?id=com.tailscale.ipn";
+  let gone = false;
+  const away = () => { gone = true; };
+  document.addEventListener("visibilitychange", away, {once: true});
+  if (isAndroid) {
+    window.location.href = "intent://#Intent;scheme=tailscale;package=com.tailscale.ipn;S.browser_fallback_url=" + encodeURIComponent(store) + ";end";
+  } else {
+    window.location.href = "tailscale://";
+  }
+  setTimeout(() => { document.removeEventListener("visibilitychange", away); if (!gone && !isAndroid) window.location.href = store; }, 900);
+}
+$("tsbtn").onclick = openTailscale;
+
 // installable app + "PC is on" notifications
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js");
 let installEvt;
